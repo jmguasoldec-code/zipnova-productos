@@ -38,6 +38,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         "env_carrier_idx": None,   # indice de carrier elegido
         "env_creado": None,        # respuesta de envio creado
         "env_origenes": None,      # cache de origenes
+        "env_zn_found": None,      # SKU encontrado en Zipnova
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -105,36 +106,45 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         p_sku = st.text_input("SKU *", key="env_p_sku")
 
         # Autocompletar desde Zipnova al ingresar SKU
-        zn_data = None
         if p_sku and len(p_sku.strip()) >= 2:
-            try:
-                h_zn, acc = _auth()
-                r_zn = requests.get(f"{ZN_BASE}/inventory/search", headers=h_zn,
-                                    params={"account_id": acc, "sku": p_sku.strip()}, timeout=10)
-                if r_zn.status_code == 200:
-                    items_zn = r_zn.json().get("data", [])
-                    if items_zn:
-                        zn_data = items_zn[0]
-                        st.success(f"✅ Encontrado: **{zn_data.get('name', '')}**")
-                    else:
-                        st.warning(f"⚠️ SKU `{p_sku.strip()}` no encontrado en Zipnova. Completá los datos manualmente.")
-            except Exception:
-                pass
+            if st.button("🔍 Buscar SKU", key="env_buscar_sku"):
+                try:
+                    h_zn, acc = _auth()
+                    r_zn = requests.get(f"{ZN_BASE}/inventory/search", headers=h_zn,
+                                        params={"account_id": acc, "sku": p_sku.strip()}, timeout=10)
+                    if r_zn.status_code == 200:
+                        items_zn = r_zn.json().get("data", [])
+                        if items_zn:
+                            zn = items_zn[0]
+                            attrs = zn.get("attributes", {})
+                            st.session_state["env_zn_found"] = {
+                                "name": zn.get("name", "Producto"),
+                                "weight": int(attrs.get("weight", 0) or 0),
+                                "length": int(attrs.get("length", 0) or 0),
+                                "width": int(attrs.get("width", 0) or 0),
+                                "height": int(attrs.get("height", 0) or 0),
+                            }
+                            st.rerun()
+                        else:
+                            st.session_state["env_zn_found"] = None
+                            st.warning(f"⚠️ SKU `{p_sku.strip()}` no encontrado en Zipnova. Completá los datos manualmente.")
+                except Exception as e:
+                    st.error(f"Error buscando SKU: {e}")
+
+        zn_found = st.session_state.get("env_zn_found")
+        if zn_found:
+            st.success(f"✅ Encontrado: **{zn_found['name']}** | {zn_found['weight']}g | {zn_found['length']}×{zn_found['width']}×{zn_found['height']} cm")
 
         col1, col2 = st.columns(2)
         with col1:
             p_desc = st.text_input("Descripcion", key="env_p_desc",
-                                   value=zn_data.get("name", "Producto") if zn_data else "Producto")
+                                   value=zn_found["name"] if zn_found else "Producto")
             p_cantidad = st.number_input("Cantidad", min_value=1, value=1, step=1, key="env_p_cant")
         with col2:
-            def_peso = int(zn_data.get("attributes", {}).get("weight", 500)) if zn_data else 500
-            def_largo = int(zn_data.get("attributes", {}).get("length", 30)) if zn_data else 30
-            def_ancho = int(zn_data.get("attributes", {}).get("width", 20)) if zn_data else 20
-            def_alto = int(zn_data.get("attributes", {}).get("height", 10)) if zn_data else 10
-            p_peso = st.number_input("Peso (gramos) *", min_value=1, value=def_peso, step=50, key="env_p_peso")
-            p_largo = st.number_input("Largo (cm) *", min_value=1, value=def_largo, step=1, key="env_p_largo")
-            p_ancho = st.number_input("Ancho (cm) *", min_value=1, value=def_ancho, step=1, key="env_p_ancho")
-            p_alto = st.number_input("Alto (cm) *", min_value=1, value=def_alto, step=1, key="env_p_alto")
+            p_peso = st.number_input("Peso (gramos) *", min_value=1, value=zn_found["weight"] if zn_found and zn_found["weight"] > 0 else 500, step=50, key="env_p_peso")
+            p_largo = st.number_input("Largo (cm) *", min_value=1, value=zn_found["length"] if zn_found and zn_found["length"] > 0 else 30, step=1, key="env_p_largo")
+            p_ancho = st.number_input("Ancho (cm) *", min_value=1, value=zn_found["width"] if zn_found and zn_found["width"] > 0 else 20, step=1, key="env_p_ancho")
+            p_alto = st.number_input("Alto (cm) *", min_value=1, value=zn_found["height"] if zn_found and zn_found["height"] > 0 else 10, step=1, key="env_p_alto")
 
         if st.button("Agregar producto", type="primary"):
             if not p_sku:
@@ -277,9 +287,9 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         amounts = elegido.get("amounts", {})
         precio = amounts.get("price_incl_tax", amounts.get("price", "—"))
         carrier_id = carrier.get("id") if isinstance(carrier, dict) else elegido.get("carrier_id")
-        stype = elegido.get("service_type", {})
-        service_type = stype.get("code", "standard_delivery") if isinstance(stype, dict) else str(stype or "standard_delivery")
-        logistic_type = elegido.get("logistic_type") or "carrier_dropoff"
+        # _service_key es el string que guardamos al parsear la cotización (ej: "standard_delivery")
+        service_type = str(elegido.get("_service_key", "standard_delivery"))
+        logistic_type = str(elegido.get("logistic_type", "carrier_dropoff"))
 
         st.divider()
         st.markdown("#### 5. Confirmar envio")
