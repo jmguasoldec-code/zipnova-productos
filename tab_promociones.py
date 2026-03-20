@@ -90,13 +90,11 @@ def render_tab_promociones(get_cuentas_ml, refresh_ml_token, ML_BASE):
             precio = float(first_promo.get("original_price", 0) or 0)
             titulo = iid  # Usamos el MLA ID, el título lo cargamos solo si tiene cofundadas
 
-            # Verificar si tiene ALGUNA promo activa (cualquier tipo)
-            cualquier_activa = [p for p in promos if p.get("status") == "started"]
             smarts_candidatas = [p for p in promos if p.get("type") == "SMART" and p.get("status") == "candidate"]
             smarts_activas = [p for p in promos if p.get("type") == "SMART" and p.get("status") == "started"]
 
-            # Solo mostrar items SIN promos activas pero CON candidatas
-            if smarts_candidatas and not cualquier_activa:
+            # Mostrar items que tienen cofundadas candidatas (activables)
+            if smarts_candidatas:
                 # Ordenar candidatas por meli_percentage desc
                 smarts_candidatas.sort(key=lambda p: float(p.get("meli_percentage", 0) or 0), reverse=True)
 
