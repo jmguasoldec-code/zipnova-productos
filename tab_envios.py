@@ -8,19 +8,25 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     import streamlit as st
     import requests
 
-    ACCOUNT_ID = 3901
-
     # ── helpers ──────────────────────────────────────────────────────────
-    def _headers():
-        return get_zn_auth()
+    def _auth():
+        h, acc = get_zn_auth()
+        return h, acc
 
     def _get(endpoint, params=None):
-        r = requests.get(f"{ZN_BASE}{endpoint}", headers=_headers(), params=params, timeout=30)
+        h, acc = _auth()
+        p = {"account_id": acc}
+        if params:
+            p.update(params)
+        r = requests.get(f"{ZN_BASE}{endpoint}", headers=h, params=p, timeout=30)
         r.raise_for_status()
         return r.json()
 
     def _post(endpoint, payload):
-        r = requests.post(f"{ZN_BASE}{endpoint}", headers=_headers(), json=payload, timeout=30)
+        h, acc = _auth()
+        if "account_id" not in payload:
+            payload["account_id"] = acc
+        r = requests.post(f"{ZN_BASE}{endpoint}", headers=h, json=payload, timeout=30)
         r.raise_for_status()
         return r.json()
 
@@ -39,7 +45,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     # ── cargar origenes (una vez) ────────────────────────────────────────
     if st.session_state["env_origenes"] is None:
         try:
-            data = _get("/v2/addresses", params={"account_id": ACCOUNT_ID})
+            data = _get("/addresses")
             origenes = data if isinstance(data, list) else data.get("data", data.get("results", []))
             st.session_state["env_origenes"] = origenes if origenes else []
         except Exception as e:
@@ -159,7 +165,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
 
     if st.button("Cotizar envio", type="primary", disabled=not campos_ok, use_container_width=True):
         payload = {
-            "account_id": ACCOUNT_ID,
+            "account_id": _auth()[1],
             "origin_id": origin_id,
             "declared_value": float(valor_declarado),
             "destination": {
@@ -181,7 +187,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         }
         with st.spinner("Cotizando..."):
             try:
-                resp = _post("/v2/shipments/quote", payload)
+                resp = _post("/shipments/quote", payload)
                 opciones = resp if isinstance(resp, list) else resp.get("data", resp.get("results", resp.get("options", [])))
                 if not opciones:
                     st.error("No se encontraron opciones de envio para ese destino.")
@@ -245,7 +251,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
 
         if st.button("Crear envio", type="primary", use_container_width=True):
             payload = {
-                "account_id": ACCOUNT_ID,
+                "account_id": _auth()[1],
                 "origin_id": origin_id,
                 "declared_value": float(valor_declarado),
                 "external_id": ref_externa.strip() if ref_externa else None,
@@ -280,7 +286,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
 
             with st.spinner("Creando envio..."):
                 try:
-                    resp = _post("/v2/shipments", payload)
+                    resp = _post("/shipments", payload)
                     st.session_state["env_creado"] = resp
                     st.rerun()
                 except requests.exceptions.HTTPError as e:
