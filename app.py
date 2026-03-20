@@ -172,17 +172,19 @@ def buscar_item_ml(item_id, cuenta):
                 elif "cm" in name.lower(): height = int(num)
                 else: height = int(num * 100)
 
-    sku = item.get("seller_custom_field") or ""
-    if not sku:
-        for a in item.get("attributes", []):
-            if a.get("id") == "SELLER_SKU":
-                sku = a.get("value_name", "") or ""
-                break
+    # SKU: prioridad SELLER_SKU (atributo) > variaciones > seller_custom_field
+    sku = ""
+    for a in item.get("attributes", []):
+        if a.get("id") == "SELLER_SKU":
+            sku = a.get("value_name", "") or ""
+            break
     if not sku:
         for v in item.get("variations", []):
             sku = v.get("seller_custom_field") or ""
             if sku:
                 break
+    if not sku:
+        sku = item.get("seller_custom_field") or ""
 
     thumbnail = item.get("thumbnail") or item.get("secure_thumbnail") or ""
     return {
