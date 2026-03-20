@@ -7,6 +7,7 @@ Interfaz paso a paso pensada para vendedores.
 def render_tab_envios(get_zn_auth, ZN_BASE):
     import streamlit as st
     import requests
+    import re
 
     # ── helpers ──────────────────────────────────────────────────────────
     def _auth():
@@ -114,8 +115,9 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
                     items_zn = r_zn.json().get("data", [])
                     if items_zn:
                         zn_data = items_zn[0]
-                        attrs = zn_data.get("attributes", {})
                         st.success(f"✅ Encontrado: **{zn_data.get('name', '')}**")
+                    else:
+                        st.warning(f"⚠️ SKU `{p_sku.strip()}` no encontrado en Zipnova. Completá los datos manualmente.")
             except Exception:
                 pass
 
@@ -272,9 +274,11 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         elegido = st.session_state["env_cotizaciones"][st.session_state["env_carrier_idx"]]
         carrier = elegido.get("carrier", {})
         carrier_name = carrier.get("name", "—") if isinstance(carrier, dict) else str(carrier)
-        precio = elegido.get("price") or elegido.get("total_price") or elegido.get("amount", "—")
-        carrier_id = elegido.get("carrier_id") or elegido.get("carrier", {}).get("id")
-        service_type = elegido.get("service_type") or "standard_delivery"
+        amounts = elegido.get("amounts", {})
+        precio = amounts.get("price_incl_tax", amounts.get("price", "—"))
+        carrier_id = carrier.get("id") if isinstance(carrier, dict) else elegido.get("carrier_id")
+        stype = elegido.get("service_type", {})
+        service_type = stype.get("code", "standard_delivery") if isinstance(stype, dict) else str(stype or "standard_delivery")
         logistic_type = elegido.get("logistic_type") or "carrier_dropoff"
 
         st.divider()
@@ -294,14 +298,15 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
                 for it in st.session_state["env_items"]:
                     st.text(f"{it['sku']} — {it['weight']}g")
 
-        ref_externa = st.text_input("Referencia externa (opcional)", key="env_ref", placeholder="Ej: W12345")
+        ref_externa = st.text_input("Referencia externa (opcional)", key="env_ref", placeholder="Ej: W12345",
+                                    help="Solo letras, números, guiones y guiones bajos. Sin espacios.")
 
         if st.button("Crear envio", type="primary", use_container_width=True):
             payload = {
                 "account_id": _auth()[1],
                 "origin_id": origin_id,
                 "declared_value": float(valor_declarado),
-                "external_id": ref_externa.strip() if ref_externa else None,
+                "external_id": re.sub(r"[^a-zA-Z0-9_\-]", "_", ref_externa.strip())[:30] if ref_externa.strip() else None,
                 "destination": {
                     "name": dest_nombre.strip(),
                     "street": dest_calle.strip(),
