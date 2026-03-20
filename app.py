@@ -10,6 +10,7 @@ import streamlit as st
 import requests
 from tab_envios import render_tab_envios
 from tab_vincular import render_tab_vincular
+from tab_promociones import render_tab_promociones
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 ML_BASE = "https://api.mercadolibre.com"
@@ -284,7 +285,7 @@ if not check_password():
 st.title("📦 Zipnova — Gestión de Productos")
 st.caption("Guala Soluciones Decorativas")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🛒 Desde ML", "🌐 Desde Woo", "✏️ Manual", "🔍 Verificar", "📦 Crear Envío", "🔗 Vincular"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🛒 Desde ML", "🌐 Desde Woo", "✏️ Manual", "🔍 Verificar", "📦 Crear Envío", "🔗 Vincular", "🏷️ Promociones"])
 
 CUENTAS_ML = get_cuentas_ml()
 
@@ -592,6 +593,10 @@ with tab5:
 # ─── TAB 6: VINCULAR ────────────────────────────────────────────────────────
 with tab6:
     render_tab_vincular(get_zn_auth, ZN_BASE, buscar_item_ml, get_cuentas_ml, refresh_ml_token)
+
+# ─── TAB 7: PROMOCIONES ─────────────────────────────────────────────────────
+with tab7:
+    render_tab_promociones(get_cuentas_ml, refresh_ml_token, ML_BASE)
 
 # ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 with st.sidebar:
