@@ -63,7 +63,7 @@ def render_tab_repricing(get_cuentas_ml, refresh_ml_token, ML_BASE, buscar_costo
         return item.get("seller_custom_field") or ""
 
     def obtener_info_item(item_id, token):
-        """Obtiene precio, titulo, SKU de un item ML."""
+        """Obtiene precio, titulo, SKU de un item ML (autenticado, para items propios)."""
         data, err = ml_get(f"{ML_BASE}/items/{item_id}",
                            token, {"include_attributes": "all"})
         if err:
@@ -76,6 +76,24 @@ def render_tab_repricing(get_cuentas_ml, refresh_ml_token, ML_BASE, buscar_costo
             "category_id": data.get("category_id", ""),
             "thumbnail": data.get("thumbnail") or data.get("secure_thumbnail") or "",
         }, None
+
+    def obtener_info_competidor(item_id):
+        """Obtiene precio y titulo de un item competidor (endpoint público, sin token)."""
+        try:
+            r = requests.get(f"{ML_BASE}/items/{item_id}", timeout=15)
+            if r.status_code != 200:
+                return None, f"HTTP {r.status_code}"
+            data = r.json()
+            return {
+                "item_id": data.get("id", item_id),
+                "title": data.get("title", ""),
+                "price": float(data.get("price", 0) or 0),
+                "sku": "",
+                "category_id": data.get("category_id", ""),
+                "thumbnail": data.get("thumbnail") or data.get("secure_thumbnail") or "",
+            }, None
+        except Exception as e:
+            return None, str(e)
 
     def obtener_promos(item_id, token):
         """Obtiene promociones disponibles para un item."""
@@ -221,7 +239,7 @@ def render_tab_repricing(get_cuentas_ml, refresh_ml_token, ML_BASE, buscar_costo
             with st.spinner("Buscando ambos productos..."):
                 info_propio, err1 = obtener_info_item(mi_mla.strip(), token)
                 time.sleep(0.3)
-                info_comp, err2 = obtener_info_item(comp_mla.strip(), token)
+                info_comp, err2 = obtener_info_competidor(comp_mla.strip())
 
             if err1:
                 st.error(f"Error al buscar mi MLA: {err1}")
@@ -320,7 +338,7 @@ def render_tab_repricing(get_cuentas_ml, refresh_ml_token, ML_BASE, buscar_costo
                 time.sleep(0.3)
 
                 # Obtener precio competidor
-                info_comp, err2 = obtener_info_item(par["comp_mla"], token)
+                info_comp, err2 = obtener_info_competidor(par["comp_mla"])
                 time.sleep(0.3)
 
                 if err1 or err2:
