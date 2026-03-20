@@ -210,12 +210,33 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         with st.spinner("Cotizando..."):
             try:
                 resp = _post("/shipments/quote", payload)
-                opciones = resp if isinstance(resp, list) else resp.get("data", resp.get("results", resp.get("options", [])))
-                if not opciones:
+                # Zipnova devuelve results como dict {service_type: {carrier, amounts, ...}}
+                # y all_results como dict {service_type: [{carrier, amounts, ...}, ...]}
+                opciones_flat = []
+                all_res = resp.get("all_results", {})
+                if isinstance(all_res, dict):
+                    for stype, carriers in all_res.items():
+                        if isinstance(carriers, list):
+                            for c in carriers:
+                                c["_service_key"] = stype
+                                opciones_flat.append(c)
+                        elif isinstance(carriers, dict):
+                            carriers["_service_key"] = stype
+                            opciones_flat.append(carriers)
+                # Fallback a results si all_results vacío
+                if not opciones_flat:
+                    results = resp.get("results", {})
+                    if isinstance(results, dict):
+                        for stype, data in results.items():
+                            if isinstance(data, dict):
+                                data["_service_key"] = stype
+                                opciones_flat.append(data)
+
+                if not opciones_flat:
                     st.error("No se encontraron opciones de envio para ese destino.")
                     st.session_state["env_cotizaciones"] = None
                 else:
-                    st.session_state["env_cotizaciones"] = opciones
+                    st.session_state["env_cotizaciones"] = opciones_flat
                     st.session_state["env_carrier_idx"] = None
                     st.rerun()
             except requests.exceptions.HTTPError as e:
@@ -233,12 +254,15 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         st.markdown("##### Opciones disponibles")
         opciones = st.session_state["env_cotizaciones"]
         for idx, op in enumerate(opciones):
-            carrier_name = op.get("carrier_name") or op.get("carrier", {}).get("name", f"Carrier {idx+1}")
-            service = op.get("service_type") or op.get("service", "")
-            precio = op.get("price") or op.get("total_price") or op.get("amount", "—")
-            tiempo = op.get("estimated_delivery") or op.get("delivery_time") or op.get("transit_days", "—")
+            carrier = op.get("carrier", {})
+            carrier_name = carrier.get("name", f"Carrier {idx+1}") if isinstance(carrier, dict) else str(carrier)
+            amounts = op.get("amounts", {})
+            precio = amounts.get("price_incl_tax", amounts.get("price", 0))
+            dt = op.get("delivery_time", {})
+            dias_max = dt.get("max", "?") if isinstance(dt, dict) else str(dt)
+            servicio = op.get("_service_key", "")
 
-            label = f"**{carrier_name}**  —  ${precio}  —  {tiempo} dias"
+            label = f"**{carrier_name}** — ${precio:,.2f} — {dias_max} días — {servicio}"
             if st.button(label, key=f"env_opt_{idx}", use_container_width=True):
                 st.session_state["env_carrier_idx"] = idx
                 st.rerun()
@@ -246,7 +270,8 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     # ── Paso 5: Confirmar y crear ────────────────────────────────────────
     if st.session_state["env_carrier_idx"] is not None and st.session_state["env_cotizaciones"]:
         elegido = st.session_state["env_cotizaciones"][st.session_state["env_carrier_idx"]]
-        carrier_name = elegido.get("carrier_name") or elegido.get("carrier", {}).get("name", "—")
+        carrier = elegido.get("carrier", {})
+        carrier_name = carrier.get("name", "—") if isinstance(carrier, dict) else str(carrier)
         precio = elegido.get("price") or elegido.get("total_price") or elegido.get("amount", "—")
         carrier_id = elegido.get("carrier_id") or elegido.get("carrier", {}).get("id")
         service_type = elegido.get("service_type") or "standard_delivery"
