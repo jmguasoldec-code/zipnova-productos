@@ -88,9 +88,15 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     col_a, col_b = st.columns(2)
     with col_a:
         dest_nombre = st.text_input("Nombre completo *", key="env_dest_nombre")
-        dest_telefono = st.text_input("Telefono *", key="env_dest_tel")
+        tel_prefix_col, tel_input_col = st.columns([1, 3])
+        with tel_prefix_col:
+            st.text_input("Prefijo", value="+549", disabled=True, key="env_tel_prefix")
+        with tel_input_col:
+            dest_telefono_input = st.text_input("Telefono *", key="env_dest_tel")
+        dest_telefono = "+549" + dest_telefono_input.strip()
         dest_email = st.text_input("Email", key="env_dest_email")
         dest_dni = st.text_input("DNI *", key="env_dest_dni")
+        nro_cliente_erp = st.text_input("N° Cliente ERP", key="env_nro_cliente_erp", placeholder="Opcional")
     with col_b:
         dest_calle = st.text_input("Calle *", key="env_dest_calle")
         dest_numero = st.text_input("Numero *", key="env_dest_num")
@@ -210,7 +216,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     st.markdown("#### 4. Cotizar envio")
 
     # validacion minima
-    campos_ok = all([dest_nombre, dest_telefono, dest_dni, dest_calle, dest_numero, dest_ciudad, dest_provincia, dest_cp])
+    campos_ok = all([dest_nombre, dest_telefono_input, dest_dni, dest_calle, dest_numero, dest_ciudad, dest_provincia, dest_cp])
 
     if not campos_ok:
         st.warning("Completa todos los campos obligatorios (*) del destinatario para cotizar.")
@@ -321,6 +327,8 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
                 st.text(f"{dest_calle} {dest_numero}")
                 st.text(f"{dest_ciudad}, {dest_provincia} ({dest_cp})")
                 st.text(f"Tel: {dest_telefono} | DNI: {dest_dni}")
+                if nro_cliente_erp.strip():
+                    st.text(f"Cliente ERP: {nro_cliente_erp.strip()}")
             with c2:
                 st.markdown("**Productos**")
                 for it in st.session_state["env_items"]:
@@ -329,12 +337,20 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
         ref_externa = st.text_input("Referencia externa (opcional)", key="env_ref", placeholder="Ej: W12345",
                                     help="Solo letras, números, guiones y guiones bajos. Sin espacios.")
 
+        remito_file = st.file_uploader("Adjuntar remito (PDF/imagen)", type=["pdf", "png", "jpg", "jpeg"], key="env_remito")
+        if remito_file:
+            st.info("El remito queda como referencia visual en la UI. No se envia a la API de Zipnova.")
+            if remito_file.type.startswith("image"):
+                st.image(remito_file, caption="Remito adjunto", use_container_width=True)
+            elif remito_file.type == "application/pdf":
+                st.markdown(f"Archivo adjunto: **{remito_file.name}** ({remito_file.size / 1024:.1f} KB)")
+
         if st.button("Crear envio", type="primary", use_container_width=True):
             payload = {
                 "account_id": _auth()[1],
                 "origin_id": origin_id,
                 "declared_value": float(valor_declarado),
-                "external_id": re.sub(r"[^a-zA-Z0-9_\-]", "_", ref_externa.strip())[:30] if ref_externa.strip() else f"ZN{int(time.time())}",
+                "external_id": re.sub(r"[^a-zA-Z0-9_\-]", "_", ref_externa.strip())[:30] if ref_externa.strip() else (f"ERP{nro_cliente_erp.strip()}_{int(time.time())}" if nro_cliente_erp.strip() else f"ZN{int(time.time())}"),
                 "destination": {
                     "name": dest_nombre.strip(),
                     "street": dest_calle.strip(),

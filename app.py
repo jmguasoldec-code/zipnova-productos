@@ -187,6 +187,7 @@ def buscar_item_ml(item_id, cuenta):
         sku = item.get("seller_custom_field") or ""
 
     thumbnail = item.get("thumbnail") or item.get("secure_thumbnail") or ""
+    logistic_type = (item.get("shipping") or {}).get("logistic_type", "")
     return {
         "item_id": item.get("id", ""),
         "sku": sku,
@@ -194,6 +195,7 @@ def buscar_item_ml(item_id, cuenta):
         "price": float(item.get("price", 0) or 0),
         "weight": weight, "length": length, "width": width, "height": height,
         "thumbnail": thumbnail,
+        "logistic_type": logistic_type,
     }, None
 
 
@@ -206,9 +208,9 @@ def buscar_producto_woo(ref):
     base = f"{woo_url}/wp-json/wc/v3"
 
     try:
-        r = requests.get(f"{base}/products/{ref}", params=params, timeout=30)
+        r = requests.get(f"{base}/products/{ref}", params=params, timeout=60)
         if r.status_code != 200:
-            r = requests.get(f"{base}/products", params={**params, "sku": ref}, timeout=30)
+            r = requests.get(f"{base}/products", params={**params, "sku": ref}, timeout=60)
             if r.status_code == 200 and r.json():
                 product = r.json()[0]
             else:
@@ -483,17 +485,21 @@ with tab4:
                     if len(ids) >= resp_ml.get("paging", {}).get("total", 0):
                         break
                     off += 50
-            st.info(f"🛒 {len(ids)} items activos en ML ({cuenta_v})")
+            st.info(f"🛒 {len(ids)} items activos en ML ({cuenta_v}) — se filtrarán solo ME1/Zipnova")
 
             # --- Paso 3: Comparar cada item ML contra Zipnova ---
             rows = []
-            ok_n, diff_n, no_zn, no_sku = 0, 0, 0, 0
+            ok_n, diff_n, no_zn, no_sku, filtered_n = 0, 0, 0, 0, 0
             prog = st.progress(0, text="Comparando items...")
             for i, iid in enumerate(ids):
                 prog.progress((i + 1) / max(len(ids), 1), text=f"Procesando {i+1}/{len(ids)}...")
                 ml, err = buscar_item_ml(iid, cuenta)
                 if not ml:
                     no_sku += 1
+                    continue
+                # Filtrar solo items ME1 (Zipnova) — logistic_type == "default"
+                if ml.get("logistic_type") != "default":
+                    filtered_n += 1
                     continue
                 if not ml["sku"]:
                     no_sku += 1
@@ -542,6 +548,8 @@ with tab4:
             prog.empty()
 
             # --- Paso 4: Metricas resumen ---
+            me1_total = ok_n + diff_n + no_zn + no_sku
+            st.info(f"📦 {me1_total} items ME1 (Zipnova) de {len(ids)} activos en ML — {filtered_n} items no-ME1 filtrados")
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("✅ OK", ok_n)
             c2.metric("⚠️ Con diferencias", diff_n)
