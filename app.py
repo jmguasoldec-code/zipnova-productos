@@ -471,12 +471,13 @@ with tab4:
                     data_zn = r.json()
                     for it in data_zn.get("data", []):
                         at = it.get("attributes", {})
-                        zn_skus[it["sku"].upper()] = {
+                        vals = {
                             "w": int(at.get("weight", 0) or 0),
                             "l": int(at.get("length", 0) or 0),
                             "wi": int(at.get("width", 0) or 0),
                             "h": int(at.get("height", 0) or 0),
                         }
+                        zn_skus[it["sku"].upper()] = vals
                     if page >= data_zn.get("meta", {}).get("last_page", 1):
                         break
                     page += 1
@@ -524,7 +525,9 @@ with tab4:
                     })
                     continue
                 su = ml["sku"].upper()
-                if su not in zn_skus:
+                # Buscar exacto primero, si no matchea probar con .1
+                z = zn_skus.get(su) or zn_skus.get(su + ".1")
+                if not z:
                     no_zn += 1
                     rows.append({
                         "MLA": iid, "SKU": ml["sku"], "Producto": ml["name"][:50],
@@ -534,7 +537,6 @@ with tab4:
                         "ZN Peso(g)": "", "ZN Largo": "", "ZN Ancho": "", "ZN Alto": "",
                     })
                     continue
-                z = zn_skus[su]
                 diffs = []
                 if abs(ml["weight"] - z["w"]) > 50:
                     diffs.append("Peso")
