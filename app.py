@@ -11,6 +11,7 @@ import requests
 from tab_envios import render_tab_envios
 from tab_vincular import render_tab_vincular
 from tab_promociones import render_tab_promociones
+from tab_repricing import render_tab_repricing
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 ML_BASE = "https://api.mercadolibre.com"
@@ -285,7 +286,7 @@ if not check_password():
 st.title("📦 Zipnova — Gestión de Productos")
 st.caption("Guala Soluciones Decorativas")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🛒 Desde ML", "🌐 Desde Woo", "✏️ Manual", "🔍 Verificar", "📦 Crear Envío", "🔗 Vincular", "🏷️ Promociones"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["🛒 Desde ML", "🌐 Desde Woo", "✏️ Manual", "🔍 Verificar", "📦 Crear Envío", "🔗 Vincular", "🏷️ Promos", "💰 Repricing"])
 
 CUENTAS_ML = get_cuentas_ml()
 
@@ -597,6 +598,10 @@ with tab6:
 # ─── TAB 7: PROMOCIONES ─────────────────────────────────────────────────────
 with tab7:
     render_tab_promociones(get_cuentas_ml, refresh_ml_token, ML_BASE)
+
+# ─── TAB 8: REPRICING ───────────────────────────────────────────────────────
+with tab8:
+    render_tab_repricing(get_cuentas_ml, refresh_ml_token, ML_BASE, buscar_costo_erp)
 
 # ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 with st.sidebar:
