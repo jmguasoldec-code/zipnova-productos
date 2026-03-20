@@ -236,6 +236,28 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# ─── LOGIN ───────────────────────────────────────────────────────────────────
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+    if st.session_state["authenticated"]:
+        return True
+    st.title("🔒 Zipnova — Productos")
+    st.caption("Guala Soluciones Decorativas")
+    pwd = st.text_input("Contraseña", type="password", key="login_pwd")
+    if st.button("Ingresar", type="primary"):
+        if pwd == st.secrets["passwords"]["password"]:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Contraseña incorrecta")
+    return False
+
+
+if not check_password():
+    st.stop()
+
 st.title("📦 Zipnova — Gestión de Productos")
 st.caption("Guala Soluciones Decorativas")
 
