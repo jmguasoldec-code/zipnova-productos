@@ -205,15 +205,20 @@ def buscar_producto_woo(ref):
     params = {"consumer_key": ck, "consumer_secret": cs}
     base = f"{woo_url}/wp-json/wc/v3"
 
-    r = requests.get(f"{base}/products/{ref}", params=params, timeout=15)
-    if r.status_code != 200:
-        r = requests.get(f"{base}/products", params={**params, "sku": ref}, timeout=15)
-        if r.status_code == 200 and r.json():
-            product = r.json()[0]
+    try:
+        r = requests.get(f"{base}/products/{ref}", params=params, timeout=30)
+        if r.status_code != 200:
+            r = requests.get(f"{base}/products", params={**params, "sku": ref}, timeout=30)
+            if r.status_code == 200 and r.json():
+                product = r.json()[0]
+            else:
+                return None, f"No se encontró producto {ref}"
         else:
-            return None, f"No se encontró producto {ref}"
-    else:
-        product = r.json()
+            product = r.json()
+    except requests.exceptions.Timeout:
+        return None, "Timeout al conectar con WooCommerce. Intentá de nuevo."
+    except Exception as e:
+        return None, f"Error de conexión: {e}"
 
     dims = product.get("dimensions", {})
     weight_kg = float(product.get("weight", 0) or 0)
