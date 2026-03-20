@@ -101,16 +101,38 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     st.markdown("#### 3. Productos a enviar")
 
     with st.expander("Agregar producto", expanded=len(st.session_state["env_items"]) == 0):
+        p_sku = st.text_input("SKU *", key="env_p_sku")
+
+        # Autocompletar desde Zipnova al ingresar SKU
+        zn_data = None
+        if p_sku and len(p_sku.strip()) >= 2:
+            try:
+                h_zn, acc = _auth()
+                r_zn = requests.get(f"{ZN_BASE}/inventory/search", headers=h_zn,
+                                    params={"account_id": acc, "sku": p_sku.strip()}, timeout=10)
+                if r_zn.status_code == 200:
+                    items_zn = r_zn.json().get("data", [])
+                    if items_zn:
+                        zn_data = items_zn[0]
+                        attrs = zn_data.get("attributes", {})
+                        st.success(f"✅ Encontrado: **{zn_data.get('name', '')}**")
+            except Exception:
+                pass
+
         col1, col2 = st.columns(2)
         with col1:
-            p_sku = st.text_input("SKU *", key="env_p_sku")
-            p_desc = st.text_input("Descripcion", key="env_p_desc", value="Producto")
+            p_desc = st.text_input("Descripcion", key="env_p_desc",
+                                   value=zn_data.get("name", "Producto") if zn_data else "Producto")
             p_cantidad = st.number_input("Cantidad", min_value=1, value=1, step=1, key="env_p_cant")
         with col2:
-            p_peso = st.number_input("Peso (gramos) *", min_value=1, value=500, step=50, key="env_p_peso")
-            p_largo = st.number_input("Largo (cm) *", min_value=1, value=30, step=1, key="env_p_largo")
-            p_ancho = st.number_input("Ancho (cm) *", min_value=1, value=20, step=1, key="env_p_ancho")
-            p_alto = st.number_input("Alto (cm) *", min_value=1, value=10, step=1, key="env_p_alto")
+            def_peso = int(zn_data.get("attributes", {}).get("weight", 500)) if zn_data else 500
+            def_largo = int(zn_data.get("attributes", {}).get("length", 30)) if zn_data else 30
+            def_ancho = int(zn_data.get("attributes", {}).get("width", 20)) if zn_data else 20
+            def_alto = int(zn_data.get("attributes", {}).get("height", 10)) if zn_data else 10
+            p_peso = st.number_input("Peso (gramos) *", min_value=1, value=def_peso, step=50, key="env_p_peso")
+            p_largo = st.number_input("Largo (cm) *", min_value=1, value=def_largo, step=1, key="env_p_largo")
+            p_ancho = st.number_input("Ancho (cm) *", min_value=1, value=def_ancho, step=1, key="env_p_ancho")
+            p_alto = st.number_input("Alto (cm) *", min_value=1, value=def_alto, step=1, key="env_p_alto")
 
         if st.button("Agregar producto", type="primary"):
             if not p_sku:
