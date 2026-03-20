@@ -38,6 +38,8 @@ def render_tab_promociones(get_cuentas_ml, refresh_ml_token, ML_BASE):
     cuenta = next(c for c in cuentas if c["nombre"] == cuenta_nombre)
 
     # ── PASO 1: ESCANEAR ──────────────────────────────────────────────
+    max_items = st.number_input("Cantidad de items a escanear", min_value=10, max_value=5000, value=20, step=10, key="promo_max")
+
     if st.button("🔍 Escanear promociones", key="btn_scan_promos"):
         st.session_state["promo_scan"] = None
         st.session_state["promo_activados"] = None
@@ -60,7 +62,10 @@ def render_tab_promociones(get_cuentas_ml, refresh_ml_token, ML_BASE):
                 item_ids.extend(data.get("results", []))
                 if len(item_ids) >= data.get("paging", {}).get("total", 0):
                     break
+                if len(item_ids) >= max_items:
+                    break
                 off += 50
+            item_ids = item_ids[:max_items]
 
         st.info(f"🛒 {len(item_ids)} items activos en {cuenta_nombre}")
 
@@ -70,16 +75,20 @@ def render_tab_promociones(get_cuentas_ml, refresh_ml_token, ML_BASE):
         for i, iid in enumerate(item_ids):
             prog.progress((i + 1) / max(len(item_ids), 1), text=f"Escaneando {i+1}/{len(item_ids)}...")
 
-            # Obtener título del item
-            item_data = ml_get(f"{ML_BASE}/items/{iid}", token)
-            titulo = item_data.get("title", "—")[:50] if item_data else "—"
-            precio = item_data.get("price", 0) if item_data else 0
-
-            # Obtener promos
-            promos = ml_get(f"{ML_BASE}/seller-promotions/items/{iid}?app_version=v2", token)
-            if not promos or not isinstance(promos, list):
-                time.sleep(0.2)
+            # Obtener promos (solo 1 request por item, no traer título para no saturar)
+            try:
+                promos = ml_get(f"{ML_BASE}/seller-promotions/items/{iid}?app_version=v2", token)
+            except Exception:
+                time.sleep(1)
                 continue
+            if not promos or not isinstance(promos, list):
+                time.sleep(0.3)
+                continue
+
+            # Obtener precio y título de la primera promo (ya viene original_price)
+            first_promo = promos[0] if promos else {}
+            precio = float(first_promo.get("original_price", 0) or 0)
+            titulo = iid  # Usamos el MLA ID, el título lo cargamos solo si tiene cofundadas
 
             smarts_candidatas = [p for p in promos if p.get("type") == "SMART" and p.get("status") == "candidate"]
             smarts_activas = [p for p in promos if p.get("type") == "SMART" and p.get("status") == "started"]
@@ -89,6 +98,14 @@ def render_tab_promociones(get_cuentas_ml, refresh_ml_token, ML_BASE):
                 smarts_candidatas.sort(key=lambda p: float(p.get("meli_percentage", 0) or 0), reverse=True)
 
                 mejor = smarts_candidatas[0] if smarts_candidatas else (smarts_activas[0] if smarts_activas else None)
+
+                # Traer título solo para items con cofundadas
+                try:
+                    item_data = ml_get(f"{ML_BASE}/items/{iid}", token)
+                    titulo = item_data.get("title", iid)[:50] if item_data else iid
+                except Exception:
+                    titulo = iid
+                time.sleep(0.1)
 
                 scan.append({
                     "item_id": iid,
