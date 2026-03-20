@@ -8,6 +8,8 @@ Deploy: Streamlit Cloud
 import os, json, re, base64, time
 import streamlit as st
 import requests
+from tab_envios import render_tab_envios
+from tab_vincular import render_tab_vincular
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 ML_BASE = "https://api.mercadolibre.com"
@@ -261,7 +263,7 @@ if not check_password():
 st.title("📦 Zipnova — Gestión de Productos")
 st.caption("Guala Soluciones Decorativas")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🛒 Desde MercadoLibre", "🌐 Desde WooCommerce", "✏️ Manual", "🔍 Verificar"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🛒 Desde ML", "🌐 Desde Woo", "✏️ Manual", "🔍 Verificar", "📦 Crear Envío", "🔗 Vincular"])
 
 CUENTAS_ML = get_cuentas_ml()
 
@@ -435,60 +437,132 @@ with tab4:
         if not token:
             st.error("Token ML no disponible")
         else:
-            with st.spinner("Cargando Zipnova..."):
+            # --- Paso 1: Cargar todos los SKUs de Zipnova con paginación ---
+            with st.spinner("Cargando inventario Zipnova..."):
                 h_zn, acc = get_zn_auth()
                 zn_skus = {}
                 page = 1
                 while True:
                     r = requests.get(f"{ZN_BASE}/inventory/search", headers=h_zn,
                                      params={"account_id": acc, "per_page": 100, "page": page}, timeout=15)
-                    if r.status_code != 200: break
-                    for it in r.json().get("data", []):
+                    if r.status_code != 200:
+                        break
+                    data_zn = r.json()
+                    for it in data_zn.get("data", []):
                         at = it.get("attributes", {})
-                        zn_skus[it["sku"].upper()] = {"w": at.get("weight",0), "l": at.get("length",0), "wi": at.get("width",0), "h": at.get("height",0)}
-                    if page >= r.json().get("meta",{}).get("last_page",1): break
+                        zn_skus[it["sku"].upper()] = {
+                            "w": int(at.get("weight", 0) or 0),
+                            "l": int(at.get("length", 0) or 0),
+                            "wi": int(at.get("width", 0) or 0),
+                            "h": int(at.get("height", 0) or 0),
+                        }
+                    if page >= data_zn.get("meta", {}).get("last_page", 1):
+                        break
                     page += 1
-            st.info(f"{len(zn_skus)} SKUs en Zipnova")
+            st.info(f"📦 {len(zn_skus)} SKUs cargados de Zipnova")
 
-            with st.spinner("Buscando items ML..."):
+            # --- Paso 2: Cargar todos los item IDs activos de ML ---
+            with st.spinner("Cargando items activos de ML..."):
                 ids = []
                 off = 0
                 while True:
                     r = requests.get(f"{ML_BASE}/users/{cuenta['user_id']}/items/search",
                                      headers={"Authorization": f"Bearer {token}"},
                                      params={"status": "active", "offset": off, "limit": 50}, timeout=15)
-                    if r.status_code != 200: break
-                    ids.extend(r.json().get("results", []))
-                    if len(ids) >= r.json().get("paging",{}).get("total",0): break
+                    if r.status_code != 200:
+                        break
+                    resp_ml = r.json()
+                    ids.extend(resp_ml.get("results", []))
+                    if len(ids) >= resp_ml.get("paging", {}).get("total", 0):
+                        break
                     off += 50
+            st.info(f"🛒 {len(ids)} items activos en ML ({cuenta_v})")
 
-            probs, ok_n, no_zn, no_sku = [], 0, 0, 0
-            prog = st.progress(0)
+            # --- Paso 3: Comparar cada item ML contra Zipnova ---
+            rows = []
+            ok_n, diff_n, no_zn, no_sku = 0, 0, 0, 0
+            prog = st.progress(0, text="Comparando items...")
             for i, iid in enumerate(ids):
-                prog.progress((i+1)/len(ids))
-                ml, _ = buscar_item_ml(iid, cuenta)
-                if not ml or not ml["sku"]: no_sku += 1; continue
+                prog.progress((i + 1) / max(len(ids), 1), text=f"Procesando {i+1}/{len(ids)}...")
+                ml, err = buscar_item_ml(iid, cuenta)
+                if not ml:
+                    no_sku += 1
+                    continue
+                if not ml["sku"]:
+                    no_sku += 1
+                    rows.append({
+                        "MLA": iid, "SKU": "", "Producto": ml["name"][:50],
+                        "Problema": "Sin SKU en ML",
+                        "ML Peso(g)": ml["weight"], "ML Largo": ml["length"],
+                        "ML Ancho": ml["width"], "ML Alto": ml["height"],
+                        "ZN Peso(g)": "", "ZN Largo": "", "ZN Ancho": "", "ZN Alto": "",
+                    })
+                    continue
                 su = ml["sku"].upper()
                 if su not in zn_skus:
                     no_zn += 1
-                    probs.append({"MLA": iid, "SKU": ml["sku"], "Producto": ml["name"][:40], "Problema": "No en Zipnova"})
+                    rows.append({
+                        "MLA": iid, "SKU": ml["sku"], "Producto": ml["name"][:50],
+                        "Problema": "No existe en Zipnova",
+                        "ML Peso(g)": ml["weight"], "ML Largo": ml["length"],
+                        "ML Ancho": ml["width"], "ML Alto": ml["height"],
+                        "ZN Peso(g)": "", "ZN Largo": "", "ZN Ancho": "", "ZN Alto": "",
+                    })
                     continue
                 z = zn_skus[su]
-                d = []
-                if abs(ml["weight"]-z["w"])>50: d.append(f"peso({ml['weight']}g vs {z['w']}g)")
-                if abs(ml["length"]-z["l"])>2: d.append(f"largo({ml['length']} vs {z['l']})")
-                if abs(ml["width"]-z["wi"])>2: d.append(f"ancho({ml['width']} vs {z['wi']})")
-                if abs(ml["height"]-z["h"])>2: d.append(f"alto({ml['height']} vs {z['h']})")
-                if d: probs.append({"MLA": iid, "SKU": ml["sku"], "Producto": ml["name"][:40], "Problema": ", ".join(d)})
-                else: ok_n += 1
+                diffs = []
+                if abs(ml["weight"] - z["w"]) > 50:
+                    diffs.append("Peso")
+                if abs(ml["length"] - z["l"]) > 2:
+                    diffs.append("Largo")
+                if abs(ml["width"] - z["wi"]) > 2:
+                    diffs.append("Ancho")
+                if abs(ml["height"] - z["h"]) > 2:
+                    diffs.append("Alto")
+                if diffs:
+                    diff_n += 1
+                    rows.append({
+                        "MLA": iid, "SKU": ml["sku"], "Producto": ml["name"][:50],
+                        "Problema": ", ".join(diffs),
+                        "ML Peso(g)": ml["weight"], "ML Largo": ml["length"],
+                        "ML Ancho": ml["width"], "ML Alto": ml["height"],
+                        "ZN Peso(g)": z["w"], "ZN Largo": z["l"],
+                        "ZN Ancho": z["wi"], "ZN Alto": z["h"],
+                    })
+                else:
+                    ok_n += 1
                 time.sleep(0.05)
             prog.empty()
 
+            # --- Paso 4: Metricas resumen ---
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("OK", ok_n); c2.metric("Diferencias", len(probs)-no_zn); c3.metric("No en Zipnova", no_zn); c4.metric("Sin SKU", no_sku)
-            if probs:
+            c1.metric("✅ OK", ok_n)
+            c2.metric("⚠️ Con diferencias", diff_n)
+            c3.metric("❌ No en Zipnova", no_zn)
+            c4.metric("🔹 Sin SKU en ML", no_sku)
+
+            # --- Paso 5: Tabla detallada ---
+            if rows:
                 import pandas as pd
-                st.dataframe(pd.DataFrame(probs), use_container_width=True)
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.download_button(
+                    "📥 Descargar CSV",
+                    df.to_csv(index=False).encode("utf-8"),
+                    f"verificacion_{cuenta_v}.csv",
+                    "text/csv",
+                    key="btn_download_verif",
+                )
+            else:
+                st.success("Todos los productos coinciden entre ML y Zipnova.")
+
+# ─── TAB 5: CREAR ENVÍO ──────────────────────────────────────────────────────
+with tab5:
+    render_tab_envios(get_zn_auth, ZN_BASE)
+
+# ─── TAB 6: VINCULAR ────────────────────────────────────────────────────────
+with tab6:
+    render_tab_vincular(get_zn_auth, ZN_BASE, buscar_item_ml, get_cuentas_ml, refresh_ml_token)
 
 # ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 with st.sidebar:
