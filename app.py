@@ -172,19 +172,31 @@ def buscar_item_ml(item_id, cuenta):
                 elif "cm" in name.lower(): height = int(num)
                 else: height = int(num * 100)
 
-    # SKU: prioridad SELLER_SKU (atributo) > variaciones > seller_custom_field
+    # SKU: prioridad SELLER_SKU (atributo) > variación nombre > seller_custom_field
     sku = ""
+    # 1. Atributo SELLER_SKU
     for a in item.get("attributes", []):
         if a.get("id") == "SELLER_SKU":
             sku = a.get("value_name", "") or ""
             break
+    # 2. Variaciones: extraer SKU del nombre "Color - SKU" (primera variante)
+    if not sku:
+        for v in item.get("variations", []):
+            for ac in v.get("attribute_combinations", []):
+                vname = ac.get("value_name", "") or ""
+                if " - " in vname:
+                    sku = vname.split(" - ", 1)[1].strip()
+                    break
+            if sku:
+                break
+    # 3. Fallback: seller_custom_field del item o primera variación
+    if not sku:
+        sku = item.get("seller_custom_field") or ""
     if not sku:
         for v in item.get("variations", []):
             sku = v.get("seller_custom_field") or ""
             if sku:
                 break
-    if not sku:
-        sku = item.get("seller_custom_field") or ""
 
     thumbnail = item.get("thumbnail") or item.get("secure_thumbnail") or ""
     logistic_type = (item.get("shipping") or {}).get("logistic_type", "")
