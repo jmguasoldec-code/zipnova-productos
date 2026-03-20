@@ -106,7 +106,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     with st.expander("Agregar producto", expanded=len(st.session_state["env_items"]) == 0):
         p_sku = st.text_input("SKU *", key="env_p_sku")
 
-        # Autocompletar desde Zipnova al ingresar SKU
+        # Buscar SKU en Zipnova
         if p_sku and len(p_sku.strip()) >= 2:
             if st.button("🔍 Buscar SKU", key="env_buscar_sku"):
                 try:
@@ -127,27 +127,44 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
                             }
                             st.rerun()
                         else:
-                            st.session_state["env_zn_found"] = None
-                            st.warning(f"⚠️ SKU `{p_sku.strip()}` no encontrado en Zipnova. Completá los datos manualmente.")
+                            st.session_state["env_zn_found"] = "not_found"
+                            st.rerun()
                 except Exception as e:
                     st.error(f"Error buscando SKU: {e}")
 
         zn_found = st.session_state.get("env_zn_found")
-        if zn_found:
-            st.success(f"✅ Encontrado: **{zn_found['name']}** | {zn_found['weight']}g | {zn_found['length']}×{zn_found['width']}×{zn_found['height']} cm")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            p_desc = st.text_input("Descripcion", key="env_p_desc",
-                                   value=zn_found["name"] if zn_found else "Producto")
+        # SKU encontrado → mostrar datos y agregar directo
+        if zn_found and zn_found != "not_found":
+            st.success(f"✅ **{zn_found['name']}** | {zn_found['weight']}g | {zn_found['length']}×{zn_found['width']}×{zn_found['height']} cm")
             p_cantidad = st.number_input("Cantidad", min_value=1, value=1, step=1, key="env_p_cant")
-        with col2:
-            p_peso = st.number_input("Peso (gramos) *", min_value=1, value=zn_found["weight"] if zn_found and zn_found["weight"] > 0 else 500, step=50, key="env_p_peso")
-            p_largo = st.number_input("Largo (cm) *", min_value=1, value=zn_found["length"] if zn_found and zn_found["length"] > 0 else 30, step=1, key="env_p_largo")
-            p_ancho = st.number_input("Ancho (cm) *", min_value=1, value=zn_found["width"] if zn_found and zn_found["width"] > 0 else 20, step=1, key="env_p_ancho")
-            p_alto = st.number_input("Alto (cm) *", min_value=1, value=zn_found["height"] if zn_found and zn_found["height"] > 0 else 10, step=1, key="env_p_alto")
+            p_desc = zn_found["name"]
+            p_peso = zn_found["weight"]
+            p_largo = zn_found["length"]
+            p_ancho = zn_found["width"]
+            p_alto = zn_found["height"]
 
-        if st.button("Agregar producto", type="primary"):
+        # SKU no encontrado → mostrar campos manuales
+        elif zn_found == "not_found":
+            st.warning(f"⚠️ SKU no encontrado en Zipnova. Completá los datos manualmente:")
+            col1, col2 = st.columns(2)
+            with col1:
+                p_desc = st.text_input("Descripcion *", key="env_p_desc", value="Producto")
+                p_cantidad = st.number_input("Cantidad", min_value=1, value=1, step=1, key="env_p_cant")
+            with col2:
+                p_peso = st.number_input("Peso (gramos) *", min_value=1, value=500, step=50, key="env_p_peso")
+                p_largo = st.number_input("Largo (cm) *", min_value=1, value=30, step=1, key="env_p_largo")
+                p_ancho = st.number_input("Ancho (cm) *", min_value=1, value=20, step=1, key="env_p_ancho")
+                p_alto = st.number_input("Alto (cm) *", min_value=1, value=10, step=1, key="env_p_alto")
+
+        # Sin búsqueda todavía
+        else:
+            p_desc = "Producto"
+            p_cantidad = 1
+            p_peso = p_largo = p_ancho = p_alto = 0
+
+        can_add = zn_found is not None and p_sku and p_peso > 0
+        if st.button("Agregar producto", type="primary", disabled=not can_add):
             if not p_sku:
                 st.warning("Completa el SKU del producto.")
             else:
