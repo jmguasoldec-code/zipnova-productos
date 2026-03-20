@@ -8,6 +8,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
     import streamlit as st
     import requests
     import re
+    import time
 
     # ── helpers ──────────────────────────────────────────────────────────
     def _auth():
@@ -316,7 +317,7 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
                 "account_id": _auth()[1],
                 "origin_id": origin_id,
                 "declared_value": float(valor_declarado),
-                "external_id": re.sub(r"[^a-zA-Z0-9_\-]", "_", ref_externa.strip())[:30] if ref_externa.strip() else None,
+                "external_id": re.sub(r"[^a-zA-Z0-9_\-]", "_", ref_externa.strip())[:30] if ref_externa.strip() else f"ZN{int(time.time())}",
                 "destination": {
                     "name": dest_nombre.strip(),
                     "street": dest_calle.strip(),
@@ -342,10 +343,6 @@ def render_tab_envios(get_zn_auth, ZN_BASE):
                 "service_type": service_type,
                 "carrier_id": carrier_id,
             }
-            # quitar external_id si esta vacio
-            if not payload["external_id"]:
-                del payload["external_id"]
-
             with st.spinner("Creando envio..."):
                 try:
                     resp = _post("/shipments", payload)
